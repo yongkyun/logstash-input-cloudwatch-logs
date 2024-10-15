@@ -8,7 +8,7 @@
 > Stream events from CloudWatch Logs.
 
 ### Purpose
-Specify an individual log group and individual or array of streams, and and this plugin will pull in any new log events.
+Specify an individual log group and individual or array of streams, and this plugin will pull in any new log events.
 
 ## Usage
 
