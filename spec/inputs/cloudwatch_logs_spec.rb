@@ -9,7 +9,8 @@ describe LogStash::Inputs::CloudWatch_Logs do
     {
         'access_key_id' => '1234',
         'secret_access_key' => 'secret',
-        'log_group' => ['sample-log-group'],
+        'log_group' => 'sample-log-group',
+        'log_streams' => [ 'sample-log-stream' ]
         'region' => 'us-east-1'
     }
   }
@@ -64,24 +65,6 @@ describe LogStash::Inputs::CloudWatch_Logs do
     end
   end
 
-
-  describe '#find_log_groups without prefix true' do
-    context 'with an array in the config' do
-      subject {LogStash::Inputs::CloudWatch_Logs.new(config)}
-
-      it 'passes through configuration' do
-        expect(subject.find_log_groups).to eq(['sample-log-group'])
-      end
-    end
-
-    context 'with a single string in the log_group' do
-      subject {LogStash::Inputs::CloudWatch_Logs.new(config.merge({'log_group' => 'sample-log-group-string'}))}
-
-      it 'array-ifies the single string' do
-        expect(subject.find_log_groups).to eq(['sample-log-group-string'])
-      end
-    end
-  end
 
   describe '#determine_start_position' do
     context 'start_position set to an integer' do
