@@ -7,26 +7,16 @@
 
 > Stream events from CloudWatch Logs.
 
-# Update July 2023
-Hello, this project has not received any maintenance since May of 2018. It is
-no longer a path I am using professionally, and I can not devote the time to
-maintaining it.
-
 ### Purpose
-Specify an individual log group or array of groups, and this plugin will scan
-all log streams in that group, and pull in any new log events.
-
-Optionally, you may set the `log_group_prefix` parameter to true
-which will scan for all log groups matching the specified prefix(s)
-and ingest all logs available in all of the matching groups.
+Specify an individual log group and individual or array of streams, and and this plugin will pull in any new log events.
 
 ## Usage
 
 ### Parameters
 | Parameter | Input Type | Required | Default |
 |-----------|------------|----------|---------|
-| log_group | string or Array of strings | Yes | |
-| log_group_prefix | boolean | No | `false` |
+| log_group | string | Yes | |
+| log_streams | string or Array of strings | Yes | |
 | start_position | `beginning`, `end`, or an Integer | No | `beginning` |
 | sincedb_path | string | No | `$HOME/.sincedb*` |
 | interval | number | No | 60 |
@@ -58,7 +48,8 @@ Other standard logstash parameters are available such as:
 
     input {
         cloudwatch_logs {
-            log_group => [ "/aws/lambda/my-lambda" ]
+            log_group => "/aws/lambda/my-lambda"
+            log_streams => [ "A-stream", "B-stream" ]
             access_key_id => "AKIAXXXXXX" 
             secret_access_key => "SECRET"
         }
