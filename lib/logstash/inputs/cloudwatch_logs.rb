@@ -13,12 +13,7 @@ Aws.eager_autoload!
 
 # Stream events from CloudWatch Logs streams.
 #
-# Specify an individual log group, and this plugin will scan
-# all log streams in that group, and pull in any new log events.
-#
-# Optionally, you may set the `log_group_prefix` parameter to true
-# which will scan for all log groups matching the specified prefix
-# and ingest all logs available in all of the matching groups.
+# Specify an individual log group and pull in any new log events.
 #
 class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
   include LogStash::PluginMixins::AwsConfig::V2
@@ -27,9 +22,11 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
 
   default :codec, "plain"
 
-  # Log group(s) to use as an input. If `log_group_prefix` is set
-  # to `true`, then each member of the array is treated as a prefix
-  config :log_group, :validate => :string, :list => true
+  # Log group to use as an input.
+  config :log_group, :validate => :string
+
+  # Log Stremas in Log group to use as an input.
+  config :log_streams, :validate => :string, :list => true, :default => nil
 
   # Where to write the since database (keeps track of the date
   # the last handled log stream was updated). The default will write
@@ -41,11 +38,6 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
   # Value is in seconds.
   config :interval, :validate => :number, :default => 60
 
-  # Decide if log_group is a prefix or an absolute name
-  config :log_group_prefix, :validate => :boolean, :default => false
-
-  # When a new log group is encountered at initial plugin start (not already in
-  # sincedb), allow configuration to specify where to begin ingestion on this group.
   # Valid options are: `beginning`, `end`, or an integer, representing number of
   # seconds before now to read back from.
   config :start_position, :default => 'beginning'
@@ -55,7 +47,7 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
   public
   def register
     require "digest/md5"
-    @logger.debug("Registering cloudwatch_logs input", :log_group => @log_group)
+    @logger.debug("Registering cloudwatch_logs input", :log_group => @log_group, :log_streams => @log_streams)
     settings = defined?(LogStash::SETTINGS) ? LogStash::SETTINGS : nil
     @sincedb = {}
 
@@ -69,7 +61,7 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
         datapath = File.join(settings.get_value("path.data"), "plugins", "inputs", "cloudwatch_logs")
         # Ensure that the filepath exists before writing, since it's deeply nested.
         FileUtils::mkdir_p datapath
-        @sincedb_path = File.join(datapath, ".sincedb_" + Digest::MD5.hexdigest(@log_group.join(",")))
+        @sincedb_path = File.join(datapath, ".sincedb_" + Digest::MD5.hexdigest(@log_group+@log_streams.join(",")))
       end
     end
 
@@ -88,11 +80,12 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
       #pick SINCEDB_DIR if available, otherwise use HOME
       sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
 
-      @sincedb_path = File.join(sincedb_dir, ".sincedb_" + Digest::MD5.hexdigest(@log_group.join(",")))
+      @sincedb_path = File.join(sincedb_dir, ".sincedb_" + Digest::MD5.hexdigest(@log_group+@log_streams.join(",")))
 
       @logger.info("No sincedb_path set, generating one based on the log_group setting",
                    :sincedb_path => @sincedb_path, :log_group => @log_group)
     end
+    @logger.info("sincedb_path", :sincedb_path => @sincedb_path)
 
   end #def register
 
@@ -112,16 +105,14 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
     @queue = queue
     @priority = []
     _sincedb_open
-    determine_start_position(find_log_groups, @sincedb)
+    determine_start_position(@log_group, @sincedb)
 
     while !stop?
       begin
-        groups = find_log_groups
-
-        groups.each do |group|
-          @logger.debug("calling process_group on #{group}")
-          process_group(group)
-        end # groups.each
+        group = @log_group
+        streams = @log_streams
+        @logger.debug("calling process_group on #{group}")
+        process_group(group, streams)
       rescue Aws::CloudWatchLogs::Errors::ThrottlingException
         @logger.debug("reached rate limit")
       end
@@ -131,64 +122,42 @@ class LogStash::Inputs::CloudWatch_Logs < LogStash::Inputs::Base
   end # def run
 
   public
-  def find_log_groups
-    if @log_group_prefix
-      @logger.debug("log_group prefix is enabled, searching for log groups")
-      groups = []
-      next_token = nil
-      @log_group.each do |group|
-        loop do
-          log_groups = @cloudwatch.describe_log_groups(log_group_name_prefix: group, next_token: next_token)
-          groups += log_groups.log_groups.map {|n| n.log_group_name}
-          next_token = log_groups.next_token
-          @logger.debug("found #{log_groups.log_groups.length} log groups matching prefix #{group}")
-          break if next_token.nil?
-        end
-      end
-    else
-      @logger.debug("log_group_prefix not enabled")
-      groups = @log_group
-    end
-    # Move the most recent groups to the end
-    groups.sort{|a,b| priority_of(a) <=> priority_of(b) }
-  end # def find_log_groups
+  def determine_start_position(group, sincedb)
+    if !sincedb.member?(group)
+      case @start_position
+        when 'beginning'
+          sincedb[group] = 0
 
-  private
-  def priority_of(group)
-    @priority.index(group) || -1
-  end
+        when 'end'
+          sincedb[group] = DateTime.now.strftime('%Q')
 
-  public
-  def determine_start_position(groups, sincedb)
-    groups.each do |group|
-      if !sincedb.member?(group)
-        case @start_position
-          when 'beginning'
-            sincedb[group] = 0
-
-          when 'end'
-            sincedb[group] = DateTime.now.strftime('%Q')
-
-          else
-            sincedb[group] = DateTime.now.strftime('%Q').to_i - (@start_position * 1000)
-        end # case @start_position
-      end
+        else
+          sincedb[group] = DateTime.now.strftime('%Q').to_i - (@start_position * 1000)
+      end # case @start_position
     end
   end # def determine_start_position
 
   private
-  def process_group(group)
+  def process_group(group, streams)
     next_token = nil
     loop do
       if !@sincedb.member?(group)
         @sincedb[group] = 0
       end
-      params = {
-          :log_group_name => group,
-          :start_time => @sincedb[group],
-          :interleaved => true,
-          :next_token => next_token
-      }
+      if next_token.nil?
+        params = {
+            :log_group_name => group,
+            :start_time => @sincedb[group]
+        }
+      else
+        params = {
+            :log_group_name => group,
+            :next_token => next_token
+        }
+      end
+      if streams != nil and streams.size > 1
+        params[:log_stream_names] = streams
+      end
       resp = @cloudwatch.filter_log_events(params)
 
       resp.events.each do |event|

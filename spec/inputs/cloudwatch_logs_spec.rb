@@ -77,15 +77,4 @@ describe LogStash::Inputs::CloudWatch_Logs do
     end
   end
 
-  # describe '#find_log_groups with prefix true' do
-  #   subject {LogStash::Inputs::CloudWatch_Logs.new(config.merge({'log_group_prefix' => true}))}
-  #
-  #   before(:each) {subject.register}
-  #
-  #   it 'should create list of prefixes' do
-  #     expect_any_instance_of(Aws::CloudWatchLogs::Resource).to receive(:describe_log_groups).and_return({'log_groups' => [{'log_group_name' => '1'},{'log_group_name' => '2'}]})
-  #     expect(subject.find_log_groups).to eq(['sample-log-group-1', 'sample-log-group-2'])
-  #   end
-  # end
-
 end

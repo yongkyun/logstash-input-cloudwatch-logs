@@ -16,7 +16,7 @@ Specify an individual log group and individual or array of streams, and this plu
 | Parameter | Input Type | Required | Default |
 |-----------|------------|----------|---------|
 | log_group | string | Yes | |
-| log_streams | string or Array of strings | Yes | |
+| log_streams | string or Array of strings | No | |
 | start_position | `beginning`, `end`, or an Integer | No | `beginning` |
 | sincedb_path | string | No | `$HOME/.sincedb*` |
 | interval | number | No | 60 |
